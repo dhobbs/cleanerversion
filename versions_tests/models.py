@@ -8,7 +8,7 @@ from versions.models import Versionable, VersionedManyToManyField, VersionedFore
 def versionable_description(obj):
     return "<" + str(obj.__class__.__name__) + " object: " + \
            obj.name + " {valid: [" + obj.version_start_date.isoformat() + " | " + (
-               obj.version_end_date.isoformat() if obj.version_end_date else "None") + "], created: " + obj.version_birth_date.isoformat() + "}>"
+               obj.version_end_date.isoformat() if obj.version_end_date else "None") + "], created: " + obj.version_birth_date.isoformat() + ", identity: " + str(obj.identity) + ", version: " + str(obj.version) + "}>"
 
 
 ############################################

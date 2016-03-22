@@ -29,3 +29,4 @@ sqlite.db
 # dev_no_debug.py imports local.py and disables Django-debugging
 cleanerversion/settings/dev_no_debug.py
 cleanerversion/settings/*_local.py
+.eggs/

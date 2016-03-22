@@ -179,6 +179,23 @@ class VersionManager(models.Manager):
 
         return self.adjust_version_as_of(current, relations_as_of)
 
+    def highest_version(self, object, relations_as_of=None, check_db=False):
+        """
+        Return the highest version of the given object by version number, ignoring deleted status.
+        Needed for restoring deleted objects
+        :param object:
+        :param relations_as_of:
+        :param check_db:
+        :return: Versionable
+        """
+        if object.version_end_date is None and not check_db:
+            current = object
+        else:
+            current = self.filter(identity=object.identity).order_by('-version').first() # TODO Get it to issue a SELECT MAX, not an ORDER BY
+
+        return current
+
+
     @staticmethod
     def adjust_version_as_of(version, relations_as_of):
         """
@@ -276,6 +293,7 @@ class VersionManager(models.Manager):
         kwargs['identity'] = ident
         kwargs['version_start_date'] = timestamp
         kwargs['version_birth_date'] = timestamp
+        kwargs['version'] = 0
         return super(VersionManager, self).create(**kwargs)
 
     def validate_uuid(self, uuid_string):
@@ -1234,9 +1252,11 @@ class Versionable(models.Model):
     """Hold the timestamp at which the object's data was looked up. Its value must always be in between the
     version_start_date and the version_end_date"""
 
+    version = models.IntegerField(default=0, null=False)
+
     class Meta:
         abstract = True
-        unique_together = ('id', 'identity')
+        unique_together = (('identity', 'version'), ('id', 'identity'))
 
     def __init__(self, *args, **kwargs):
         super(Versionable, self).__init__(*args, **kwargs)
@@ -1353,6 +1373,7 @@ class Versionable(models.Model):
         later_version = copy.copy(earlier_version)
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
+        later_version.version = earlier_version.version + 1
 
         # set earlier_version's ID to a new UUID so the clone (later_version) can
         # get the old one -- this allows 'head' to always have the original
@@ -1363,8 +1384,9 @@ class Versionable(models.Model):
         if not in_bulk:
             # This condition might save us a lot of database queries if we are being called
             # from a loop like in .clone_relations
-            earlier_version.save()
+            # import pdb; pdb.set_trace()
             later_version.save()
+            earlier_version.save()
         else:
             earlier_version._not_created = True
 
@@ -1480,8 +1502,19 @@ class Versionable(models.Model):
             if latest and latest != self:
                 latest.delete()
 
-            self.save()
+            latest_version = self_version = 0
+
+            highest = cls.objects.highest_version(self, check_db=True)
+
+            if highest:
+                latest_version = highest.version + 1
+            else:
+                self_version = self.version + 1
+
+
+            restored.version = max(latest_version, self_version)
             restored.save()
+            self.save()
 
             # Update ManyToMany relations to point to the old version's id instead of the restored version's id.
             for field_name in self.get_all_m2m_field_names():
@@ -1514,6 +1547,7 @@ class Versionable(models.Model):
         self.id = self.identity = self.uuid()
         self.version_start_date = self.version_birth_date = get_utc_now()
         self.version_end_date = None
+        self.version = 0
         return self
 
     @staticmethod
